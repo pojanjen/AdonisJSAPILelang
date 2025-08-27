@@ -1,35 +1,27 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
-import User from '#models/user'
+import Pembeli from '#models/pembeli'
 
-export default class Pembeli extends BaseModel {
+export default class WaInfoLelang extends BaseModel {
   /**
    * Menetapkan nama tabel secara eksplisit.
    */
-  public static table = 'pembeli'
+  public static table = 'wa_info_lelang'
 
   @column({ isPrimary: true })
   public id!: number
 
   // Kolom-kolom dari $fillable
   @column()
-  public userId!: number
+  public pembeliId!: number
 
   @column()
-  public alamatPembeli!: string
+  public pesanKirimWa!: string | null
 
-  @column()
-  public teleponPembeli!: string
-
-  @column()
-  public fotoKtp!: string | null
-
-  @column()
-  public statusVerifikasi!: 'pending' | 'approved' | 'rejected'
-
-  @column()
-  public alasanPenolakan!: string | null
+  // Setara dengan $casts = ['waktu_kirim_wa' => 'datetime']
+  @column.dateTime()
+  public waktuKirimWa!: DateTime | null
 
   @column.dateTime({ autoCreate: true })
   public createdAt!: DateTime
@@ -37,9 +29,11 @@ export default class Pembeli extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   public updatedAt!: DateTime
 
+  // --- RELASI ---
+
   /**
-   * Relasi: Pembeli belongs to User
+   * Relasi: WaInfoLelang belongs to Pembeli
    */
-  @belongsTo(() => User)
-  public user!: BelongsTo<typeof User>
+  @belongsTo(() => Pembeli)
+  public pembeli!: BelongsTo<typeof Pembeli>
 }

@@ -1,33 +1,82 @@
 import { DateTime } from 'luxon'
+import { BaseModel, column, hasOne, hasMany, beforeSave } from '@adonisjs/lucid/orm'
 import hash from '@adonisjs/core/services/hash'
-import { compose } from '@adonisjs/core/helpers'
-import { BaseModel, column } from '@adonisjs/lucid/orm'
-import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
 import { DbAccessTokensProvider } from '@adonisjs/auth/access_tokens'
+import type { HasOne, HasMany } from '@adonisjs/lucid/types/relations'
+import Pembeli from '#models/pembeli'
+import PengajuanLelang from '#models/pengajuan_lelang'
 
-const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
-  uids: ['email'],
-  passwordColumnName: 'password',
-})
-
-export default class User extends compose(BaseModel, AuthFinder) {
+export default class User extends BaseModel {
   @column({ isPrimary: true })
-  declare id: number
+  public id!: number
 
   @column()
-  declare fullName: string | null
+  public name!: string
 
   @column()
-  declare email: string
+  public email!: string
 
-  @column({ serializeAs: null })
-  declare password: string
+  @column.dateTime() // Email verification timestamp
+  public emailVerifiedAt!: DateTime | null
+
+  @column({ serializeAs: null }) // Hidden from JSON serialization
+  public password!: string
+
+  @column({ serializeAs: null }) // Remember token for "remember me" functionality
+  public rememberToken!: string | null
+
+  @column() // Role user (pembeli, petani, admin, etc.)
+  public role!: string
 
   @column.dateTime({ autoCreate: true })
-  declare createdAt: DateTime
+  public createdAt!: DateTime
 
   @column.dateTime({ autoCreate: true, autoUpdate: true })
-  declare updatedAt: DateTime | null
+  public updatedAt!: DateTime
+
+  /**
+   * Lifecycle hook untuk hashing password.
+   * Ini setara dengan cast 'password' => 'hashed' di Laravel.
+   */
+  @beforeSave()
+  public static async hashPassword(user: User) {
+    if (user.$dirty.password) {
+      user.password = await hash.make(user.password)
+    }
+  }
+
+  /**
+   * Verify user credentials - Laravel equivalent: Auth::attempt()
+   * Verifikasi email dan password untuk login
+   */
+  public static async verifyCredentials(email: string, password: string): Promise<User> {
+    const user = await this.findBy('email', email)
+
+    if (!user) {
+      throw new Error('Invalid credentials')
+    }
+
+    const isValidPassword = await hash.verify(user.password, password)
+    if (!isValidPassword) {
+      throw new Error('Invalid credentials')
+    }
+
+    return user
+  }
+
+  // --- RELASI ---
+
+  /**
+   * Relasi: User has one Pembeli
+   */
+  @hasOne(() => Pembeli)
+  public pembeli!: HasOne<typeof Pembeli>
+
+  /**
+   * Relasi: User has many PengajuanLelang
+   */
+  @hasMany(() => PengajuanLelang)
+  public pengajuanLelang!: HasMany<typeof PengajuanLelang>
 
   static accessTokens = DbAccessTokensProvider.forModel(User)
 }
