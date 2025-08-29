@@ -21,8 +21,8 @@ export default class extends BaseSchema {
       table.text('deskripsi_produk').notNullable()
       table.float('stock').notNullable()
 
-      table.timestamp('created_at')
-      table.timestamp('updated_at')
+      table.timestamp('created_at').nullable()
+      table.timestamp('updated_at').nullable()
     })
   }
 

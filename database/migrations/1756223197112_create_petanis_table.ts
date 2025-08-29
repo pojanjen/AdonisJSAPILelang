@@ -10,8 +10,8 @@ export default class extends BaseSchema {
       table.string('alamat_petani').notNullable()
       table.string('telepon_petani').notNullable()
 
-      table.timestamp('created_at')
-      table.timestamp('updated_at')
+      table.timestamp('created_at').nullable()
+      table.timestamp('updated_at').nullable()
     })
   }
 

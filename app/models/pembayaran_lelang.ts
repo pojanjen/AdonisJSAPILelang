@@ -7,7 +7,7 @@ export default class PembayaranLelang extends BaseModel {
   /**
    * Menetapkan nama tabel secara eksplisit.
    */
-  public static table = 'pembayaran_lelang'
+  public static table = 'pembayaran_lelangs'
 
   @column({ isPrimary: true })
   public id!: number

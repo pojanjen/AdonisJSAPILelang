@@ -5,7 +5,7 @@ import Produk from './produk.js'
 
 export default class JenisProduk extends BaseModel {
 
-  public static table = 'jenis_produk' // Menetapkan nama tabel secara eksplisit
+  public static table = 'jenis_produks' // Menetapkan nama tabel secara eksplisit
 
   @column({ isPrimary: true })
   declare id: number

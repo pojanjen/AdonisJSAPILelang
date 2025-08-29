@@ -16,8 +16,8 @@ export default class extends BaseSchema {
       table.float('harga_penawaran').notNullable()
       table.enum('is_pemenang', ['ya', 'tidak']).notNullable().defaultTo('tidak')
 
-      table.timestamp('created_at')
-      table.timestamp('updated_at')
+      table.timestamp('created_at').nullable()
+      table.timestamp('updated_at').nullable()
     })
   }
 

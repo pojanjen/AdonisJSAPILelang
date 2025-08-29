@@ -1,7 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
 export default class extends BaseSchema {
-  protected tableName = 'kirim_wa'
+  protected tableName = 'wa_info_lelang'
 
   async up() {
     this.schema.alterTable(this.tableName, (table) => {

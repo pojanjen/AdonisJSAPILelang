@@ -242,6 +242,80 @@ export default class PengajuanLelangsController {
     }
   }
 
+  public async history({ request, auth, response }: HttpContext) {
+    try {
+      const limit = request.input('limit', 50)
+      const userId = auth.user?.id
+
+      if (!userId) {
+        return response.unauthorized({
+          success: false,
+          message: 'User belum login',
+        })
+      }
+
+      // summary
+      const totalLelang = await PengajuanLelang.query().where('userId', userId).count('* as total')
+      const totalMenang = await PengajuanLelang.query()
+        .where('userId', userId)
+        .where('isPemenang', 'ya')
+        .count('* as total')
+
+      const totalLelangCount = Number(totalLelang[0].$extras.total)
+      const totalMenangCount = Number(totalMenang[0].$extras.total)
+      const totalKalah = totalLelangCount - totalMenangCount
+
+      const summary = {
+        total_lelang_diikuti: totalLelangCount,
+        total_menang: totalMenangCount,
+        total_kalah: totalKalah,
+      }
+
+      // history list
+      const historyData = await PengajuanLelang.query()
+        .where('userId', userId)
+        .preload('lelang', (lelangQuery) => {
+          lelangQuery.preload('produk')
+        })
+        .preload('user')
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+
+      const history = await Promise.all(
+        historyData.map(async (pengajuan) => {
+          const winningBid = await PengajuanLelang.query()
+            .where('isPemenang', 'ya')
+            .where('lelangId', pengajuan.lelangId)
+            .first()
+
+          const hargaPemenang = winningBid?.hargaPenawaran ?? pengajuan.lelang.hargaAkhir
+
+          return {
+            id: pengajuan.id,
+            lelang: pengajuan.lelang,
+            user: pengajuan.user,
+            harga_penawaran: pengajuan.hargaPenawaran,
+            harga_pemenang: hargaPemenang,
+            status: pengajuan.isPemenang === 'ya' ? 'Menang' : 'Kalah',
+          }
+        })
+      )
+
+      return response.ok({
+        success: true,
+        message: 'Riwayat berhasil diambil',
+        summary,
+        data: history,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal mengambil riwayat pengajuan',
+        error: error.message,
+      })
+    }
+  }
+
   /**
    * Menghapus pengajuan lelang.
    */

@@ -14,8 +14,8 @@ export default class extends BaseSchema {
       table.timestamp('waktu_kirim_wa', { useTz: true }).nullable()
       table.text('pesan_kirim_wa').nullable()
 
-      table.timestamp('created_at')
-      table.timestamp('updated_at')
+      table.timestamp('created_at').nullable()
+      table.timestamp('updated_at').nullable()
     })
   }
 
