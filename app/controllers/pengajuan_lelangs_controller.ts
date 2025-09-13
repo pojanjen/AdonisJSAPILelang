@@ -36,48 +36,68 @@ export default class PengajuanLelangsController {
   public async store({ request, auth, response }: HttpContext) {
     const trx = await db.transaction()
     try {
+      // Validasi input
       const validator = vine.compile(
         vine.object({
-          lelangId: vine.number().exists(async (db, v) => !!(await db.from('lelang').where('id', v).first())),
-          hargaPenawaran: vine.number().min(0),
+          lelang_id: vine.number().exists(async (db, v) => !!(await db.from('lelang').where('id', v).first())),
+          harga_penawaran: vine.number().min(0),
         })
       )
-      const payload = await request.validateUsing(validator)
-      const user = auth.getUserOrFail()
+      const validated = await request.validateUsing(validator)
 
-      const lelang = await Lelang.findOrFail(payload.lelangId)
+      const user = auth.getUserOrFail()
+      if (!user) {
+        return response.unauthorized({
+          success: false,
+          message: 'User tidak terautentikasi',
+        })
+      }
+
+      // Cek apakah lelang masih aktif
+      const lelang = await Lelang.find(validated.lelang_id)
+      if (!lelang) {
+        return response.notFound({
+          success: false,
+          message: 'Lelang tidak ditemukan',
+        })
+      }
 
       if (lelang.status !== 'dibuka') {
-        return response.badRequest({ success: false, message: 'Lelang sudah tidak aktif' })
+        return response.badRequest({
+          success: false,
+          message: 'Lelang sudah tidak aktif',
+        })
       }
-      if (payload.hargaPenawaran < lelang.hargaAwal) {
+
+      // Cek apakah harga penawaran lebih tinggi dari harga awal
+      if (validated.harga_penawaran < lelang.hargaAwal) {
         return response.badRequest({
           success: false,
           message: 'Harga penawaran harus lebih tinggi dari harga awal',
         })
       }
+
+      // Validasi step 250
       const step = 250
-      if (payload.hargaPenawaran % step !== 0) {
+      if (validated.harga_penawaran % step !== 0) {
         return response.unprocessableEntity({
           success: false,
           message: `Nominal harus kelipatan ${step}`,
         })
       }
 
-      // Gunakan transaksi dari sini
-      lelang.useTransaction(trx)
-
+      // Buat pengajuan lelang baru
       const pengajuan = await PengajuanLelang.create(
         {
-          lelangId: payload.lelangId,
+          lelangId: validated.lelang_id,
           userId: user.id,
-          hargaPenawaran: payload.hargaPenawaran,
+          hargaPenawaran: validated.harga_penawaran,
           isPemenang: 'tidak',
         },
         { client: trx }
       )
 
-      // Hitung harga tertinggi baru
+      // Update harga akhir lelang
       const latestIdSubquery = db
         .from('pengajuan_lelang')
         .select(db.raw('MAX(id) as id'))
@@ -90,12 +110,17 @@ export default class PengajuanLelangsController {
         .max('harga_penawaran as max_price')
         .first()
 
-      const highestBid = Number(highestResult?.max_price || 0)
-      lelang.hargaAkhir = Math.max(highestBid, lelang.hargaAwal)
-      await lelang.save()
+      const highest = Number(highestResult?.max_price || 0)
+
+      await Lelang.query({ client: trx })
+        .where('id', lelang.id)
+        .update({
+          harga_akhir: Math.max(highest, lelang.hargaAwal),
+        })
 
       await trx.commit()
 
+      // Load relasi untuk response
       await pengajuan.load('lelang', (q) => q.preload('produk'))
       await pengajuan.load('user')
 
@@ -108,11 +133,25 @@ export default class PengajuanLelangsController {
       })
     } catch (error) {
       await trx.rollback()
-      logger.error({ err: error }, 'BID FAILED:')
-      return response.badRequest({
+
+      if (error.code === 'E_VALIDATION_ERROR') {
+        logger.error('BID VALIDATION ERROR:', error.messages)
+        return response.unprocessableEntity({
+          success: false,
+          message: 'Validasi gagal',
+          errors: error.messages,
+        })
+      }
+
+      logger.error('BID EXCEPTION:', {
+        message: error.message,
+        stack: error.stack,
+      })
+
+      return response.internalServerError({
         success: false,
         message: 'Gagal mengajukan penawaran',
-        error: error.messages || error.message,
+        error: error.message,
       })
     }
   }
@@ -160,9 +199,12 @@ export default class PengajuanLelangsController {
       await pengajuan.save()
 
       // Update status lelang menjadi selesai
-      await pengajuan.load('lelang')
-      pengajuan.lelang.status = 'selesai'
-      await pengajuan.lelang.save()
+      await Lelang.query({ client: trx })
+        .where('id', pengajuan.lelangId)
+        .update({
+          status: 'selesai',
+          harga_akhir: pengajuan.hargaPenawaran
+        })
 
       await trx.commit()
 
@@ -242,61 +284,79 @@ export default class PengajuanLelangsController {
     }
   }
 
+  /**
+   * Riwayat pengajuan lelang user
+   */
   public async history({ request, auth, response }: HttpContext) {
     try {
       const limit = request.input('limit', 50)
-      const userId = auth.user?.id
+      const userId = auth.getUserOrFail().id
 
-      if (!userId) {
-        return response.unauthorized({
-          success: false,
-          message: 'User belum login',
-        })
-      }
+      // Ambil lelang yang sudah selesai
+      const lelangSelesai = await Lelang.query()
+        .where('status', 'selesai')
+        .select('id')
 
-      // summary
-      const totalLelang = await PengajuanLelang.query().where('userId', userId).count('* as total')
-      const totalMenang = await PengajuanLelang.query()
+      const lelangSelesaiIds = lelangSelesai.map(l => l.id)
+
+      // Summary statistic (all time data)
+      const totalLelangResult = await PengajuanLelang.query()
         .where('userId', userId)
-        .where('isPemenang', 'ya')
-        .count('* as total')
+        .whereIn('lelangId', lelangSelesaiIds)
+        .distinctOn(['lelang_id'])
+        .count('lelang_id as total')
+        .first()
 
-      const totalLelangCount = Number(totalLelang[0].$extras.total)
-      const totalMenangCount = Number(totalMenang[0].$extras.total)
-      const totalKalah = totalLelangCount - totalMenangCount
+      const totalMenangResult = await PengajuanLelang.query()
+        .where('userId', userId)
+        .whereIn('lelangId', lelangSelesaiIds)
+        .where('isPemenang', 'ya')
+        .distinctOn(['lelang_id'])
+        .count('lelang_id as total')
+        .first()
+
+      const totalLelang = Number(totalLelangResult?.$extras.total || 0)
+      const totalMenang = Number(totalMenangResult?.$extras.total || 0)
+      const totalKalah = totalLelang - totalMenang
 
       const summary = {
-        total_lelang_diikuti: totalLelangCount,
-        total_menang: totalMenangCount,
+        total_lelang_diikuti: totalLelang,
+        total_menang: totalMenang,
         total_kalah: totalKalah,
       }
 
-      // history list
-      const historyData = await PengajuanLelang.query()
+      // Ambil last bid user pada setiap lelang selesai
+      const pengajuanData = await PengajuanLelang.query()
         .where('userId', userId)
-        .preload('lelang', (lelangQuery) => {
-          lelangQuery.preload('produk')
-        })
-        .preload('user')
+        .whereIn('lelangId', lelangSelesaiIds)
+        .preload('lelang', (q) => q.preload('produk'))
         .orderBy('createdAt', 'desc')
         .limit(limit)
 
-      const history = await Promise.all(
-        historyData.map(async (pengajuan) => {
-          const winningBid = await PengajuanLelang.query()
+      // Group by lelang_id dan ambil yang terakhir
+      const groupedBids = pengajuanData.reduce((acc, bid) => {
+        if (!acc[bid.lelangId] || acc[bid.lelangId].createdAt < bid.createdAt) {
+          acc[bid.lelangId] = bid
+        }
+        return acc
+      }, {} as Record<number, typeof pengajuanData[0]>)
+
+      const lastBids = await Promise.all(
+        Object.values(groupedBids).map(async (bid) => {
+          // Ambil harga pemenang
+          const pemenangBid = await PengajuanLelang.query()
+            .where('lelangId', bid.lelangId)
             .where('isPemenang', 'ya')
-            .where('lelangId', pengajuan.lelangId)
             .first()
 
-          const hargaPemenang = winningBid?.hargaPenawaran ?? pengajuan.lelang.hargaAkhir
+          const hargaPemenang = pemenangBid?.hargaPenawaran ?? bid.lelang.hargaAkhir
 
           return {
-            id: pengajuan.id,
-            lelang: pengajuan.lelang,
-            user: pengajuan.user,
-            harga_penawaran: pengajuan.hargaPenawaran,
+            id: bid.id,
+            lelang: bid.lelang,
+            harga_penawaran: bid.hargaPenawaran,
             harga_pemenang: hargaPemenang,
-            status: pengajuan.isPemenang === 'ya' ? 'Menang' : 'Kalah',
+            status: bid.isPemenang === 'ya' ? 'Menang' : 'Kalah',
           }
         })
       )
@@ -305,7 +365,7 @@ export default class PengajuanLelangsController {
         success: true,
         message: 'Riwayat berhasil diambil',
         summary,
-        data: history,
+        data: lastBids,
       })
     } catch (error) {
       return response.internalServerError({

@@ -42,6 +42,7 @@ export default class extends BaseSeeder {
         pembeliData: {
           alamatPembeli: 'Jl. Merdeka No. 123, Jakarta Pusat',
           teleponPembeli: '081234567890',
+          nomorRekening: '1234567890123456',
           fotoKtp: 'ktp_budi.jpg',
           statusVerifikasi: 'approved' as const,
         }
@@ -57,6 +58,7 @@ export default class extends BaseSeeder {
         pembeliData: {
           alamatPembeli: 'Jl. Sudirman No. 456, Bandung',
           teleponPembeli: '081234567891',
+          nomorRekening: '9876543210987654',
           fotoKtp: 'ktp_siti.jpg',
           statusVerifikasi: 'approved' as const,
         }
@@ -72,6 +74,7 @@ export default class extends BaseSeeder {
         pembeliData: {
           alamatPembeli: 'Jl. Diponegoro No. 321, Yogyakarta',
           teleponPembeli: '081234567893',
+          nomorRekening: '5555666677778888',
           fotoKtp: 'ktp_maya.jpg',
           statusVerifikasi: 'approved' as const,
         }
@@ -127,6 +130,11 @@ export default class extends BaseSeeder {
     ])
 
     console.log(`✅ Created ${products.length} products`)
+
+    // --- Run Lelang Seeder ---
+    const { default: LelangSeeder } = await import('./lelang_seeder.js')
+    await new LelangSeeder(this.client).run()
+
     console.log('')
     console.log('🎉 Database seeding completed!')
     console.log('')

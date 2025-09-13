@@ -1,11 +1,13 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo, hasMany } from '@adonisjs/lucid/orm'
+import { BaseModel, column, belongsTo, hasMany, afterCreate, afterUpdate } from '@adonisjs/lucid/orm'
 import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
 import Produk from '#models/produk'
 import PengajuanLelang from '#models/pengajuan_lelang'
 import PenerimaanProduk from '#models/penerimaan_produk'
 import WaInfoLelang from '#models/wa_info_lelang'
 import FotoProdukLelang from '#models/foto_produk_lelang'
+import JobScheduler from '../jobs/job_scheduler.js'
+import logger from '@adonisjs/core/services/logger'
 
 export default class Lelang extends BaseModel {
   /**
@@ -76,4 +78,42 @@ export default class Lelang extends BaseModel {
 
   @hasMany(() => FotoProdukLelang)
   declare fotoProdukLelang: HasMany<typeof FotoProdukLelang>
+
+  // --- EVENT LISTENERS ---
+
+  /**
+   * Event listener: Schedule close job after create
+   */
+  @afterCreate()
+  public static async scheduleAfterCreate(lelang: Lelang) {
+    lelang.scheduleCloseJob()
+  }
+
+  /**
+   * Event listener: Re-schedule close job after update
+   */
+  @afterUpdate()
+  public static async scheduleAfterUpdate(lelang: Lelang) {
+    // Hanya re-schedule jika tanggal_selesai atau status berubah
+    if (lelang.$dirty.tanggalSelesai || lelang.$dirty.status) {
+      lelang.scheduleCloseJob()
+    }
+  }
+
+  // --- INSTANCE METHODS ---
+
+  /**
+   * Jadwalkan job untuk menutup lelang otomatis
+   */
+  public scheduleCloseJob(): void {
+    // Hanya jadwalkan jika status 'dibuka' dan tanggal_selesai masih di masa depan
+    if (this.status === 'dibuka' && this.tanggalSelesai > DateTime.now()) {
+      logger.info(`Scheduling close job for lelang ${this.id} to run at ${this.tanggalSelesai.toSQL()}`)
+
+      // Schedule job dengan delay sampai tanggal_selesai
+      JobScheduler.scheduleCloseAuction(this.id, this.tanggalSelesai)
+    } else {
+      logger.info(`Not scheduling job for lelang ${this.id} - Status: ${this.status}, End time: ${this.tanggalSelesai.toSQL()}, Now: ${DateTime.now().toSQL()}`)
+    }
+  }
 }

@@ -51,11 +51,18 @@
     "typescript": "~5.8"
   },
   "dependencies": {
+    "@adonisjs/ally": "^5.1.1",
     "@adonisjs/auth": "^9.4.0",
-    "@adonisjs/core": "^6.18.0",
+    "@adonisjs/bodyparser": "^10.1.0",
+    "@adonisjs/cookie": "^1.1.0",
+    "@adonisjs/core": "^6.19.0",
     "@adonisjs/cors": "^2.2.1",
+    "@adonisjs/drive": "^3.4.1",
     "@adonisjs/lucid": "^21.6.1",
+    "@adonisjs/session": "^7.5.1",
+    "@adonisjs/static": "^1.1.1",
     "@vinejs/vine": "^3.0.1",
+    "googleapis": "^159.0.0",
     "luxon": "^3.7.1",
     "mysql2": "^3.14.3",
     "reflect-metadata": "^0.2.2"

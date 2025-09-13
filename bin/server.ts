@@ -34,6 +34,19 @@ new Ignitor(APP_ROOT, { importer: IMPORTER })
     app.booting(async () => {
       await import('#start/env')
     })
+
+    app.ready(async () => {
+      // Initialize auction scheduling service after app is ready
+      const { default: AuctionSchedulingService } = await import('../app/services/auction_scheduling_service.js')
+      await AuctionSchedulingService.initializeScheduledJobs()
+    })
+
+    app.terminating(async () => {
+      // Cleanup scheduled jobs on shutdown
+      const { default: AuctionSchedulingService } = await import('../app/services/auction_scheduling_service.js')
+      AuctionSchedulingService.cleanup()
+    })
+
     app.listen('SIGTERM', () => app.terminate())
     app.listenIf(app.managedByPm2, 'SIGINT', () => app.terminate())
   })

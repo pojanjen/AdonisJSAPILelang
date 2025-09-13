@@ -28,6 +28,9 @@ export default class User extends BaseModel {
   @column() // Role user (pembeli, petani, admin, etc.)
   public role!: string
 
+  @column() // Google OAuth ID
+  public googleId!: string | null
+
   @column.dateTime({ autoCreate: true })
   public createdAt!: DateTime
 

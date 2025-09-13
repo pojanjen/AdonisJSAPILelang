@@ -60,6 +60,6 @@ export default class Produk extends BaseModel {
   /**
    * Relasi: Produk has many FotoProdukLelang
    */
-  @hasMany(() => FotoProdukLelang)
+  @hasMany(() => FotoProdukLelang, { foreignKey: 'lelangId' })
   public fotoProdukLelang!: HasMany<typeof FotoProdukLelang>
 }

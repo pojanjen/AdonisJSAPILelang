@@ -12,6 +12,7 @@ import { middleware } from './kernel.js'
 
 // Import Controllers
 const AuthController = () => import('#controllers/auth_controller')
+const OauthController = () => import('#controllers/oauth_controller')
 const JenisProdukController = () => import('#controllers/jenis_produk_controlllers_controller')
 const PetanisController = () => import('#controllers/petanis_controller')
 const ProduksController = () => import('#controllers/produks_controller')
@@ -37,6 +38,23 @@ router.group(() => {
   router.post('/login', [AuthController, 'login'])
 }).prefix('/auth')
 
+// =======================
+// OAUTH (PUBLIC)
+// =======================
+router.group(() => {
+  router.get('/google/redirect', [OauthController, 'redirectToGoogle'])
+  router.get('/google/callback', [OauthController, 'handleGoogleCallback'])
+}).prefix('/auth')
+
+
+// OAuth protected route
+router.group(() => {
+  router.get('/oauth/user', [OauthController, 'getOAuthUser'])
+}).prefix('/auth').use(middleware.auth())
+
+// route protek buat ngetes token
+router.get('/me', async ({ auth }) => auth.user).use(middleware.auth())
+
 // Registrasi pembeli (PUBLIC)
 router.post('/pembeli/register', [PembelisController, 'register'])
 
@@ -60,6 +78,51 @@ router.group(() => {
   // Foto Produk Lelang
   router.get('/foto-produk-lelang/lelang/:lelangId', [FotoProdukLelangsController, 'byLelang'])
 
+  // Serve static images from storage with cache control
+  // Route for Flutter Web compatibility
+  router.get('/image/:path', async ({ params, response }) => {
+    const { path } = params
+
+    try {
+      const { join } = await import('node:path')
+      const { fileURLToPath } = await import('node:url')
+      const { readFile, access } = await import('node:fs/promises')
+
+      const __dirname = fileURLToPath(new URL('.', import.meta.url))
+      const filePath = join(__dirname, '../../public/uploads', path)
+
+      try {
+        // Check if file exists
+        await access(filePath)
+
+        // Get file content
+        const file = await readFile(filePath)
+
+        // Set cache control headers for better performance
+        response.header('Cache-Control', 'public, max-age=31536000') // 1 year cache
+
+        // Set Content-Type based on file extension
+        const extension = path.split('.').pop()?.toLowerCase() || ''
+        const mimeTypes: Record<string, string> = {
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'gif': 'image/gif',
+          'webp': 'image/webp',
+          'pdf': 'application/pdf'
+        }
+
+        const contentType = mimeTypes[extension] || 'application/octet-stream'
+        return response.header('Content-Type', contentType).send(file)
+      } catch (error) {
+        return response.status(404).send({ error: 'File not found' })
+      }
+    } catch (error) {
+      console.error('File serving error:', error)
+      return response.status(500).send({ error: 'Failed to retrieve file' })
+    }
+  }).where('path', '.*')
+
   // ⚠️ Jangan expose daftar bid publik (lelang tertutup)
   // router.get('/pengajuan-lelang/lelang/:lelangId', [PengajuanLelangsController, 'byLelang']) // HAPUS / JANGAN DIPAKAI
 }).prefix('/public')
@@ -82,6 +145,7 @@ router.group(() => {
     // Upload KTP & cek status verifikasi
     router.post('/verifikasi/upload-ktp', [PembelisController, 'uploadKtp'])
     router.get('/verifikasi/status', [PembelisController, 'cekStatusVerifikasi'])
+    router.put('/update-profile', [PembelisController, 'updateProfile'])
   }).prefix('/pembeli').use(middleware.checkRole({ roles: ['pembeli'] }))
 
   // -----------------------
@@ -157,6 +221,11 @@ router.group(() => {
     router.get('/pembeli/:id', [PembelisController, 'show'])
     router.put('/pembeli/:id', [PembelisController, 'update'])
     router.delete('/pembeli/:id', [PembelisController, 'destroy'])
+
+    // Verifikasi Pembeli
+    router.get('/pembeli/verifikasi/daftar', [PembelisController, 'daftarVerifikasi'])
+    router.put('/pembeli/:id/verifikasi/approve', [PembelisController, 'approveVerifikasi'])
+    router.put('/pembeli/:id/verifikasi/reject', [PembelisController, 'rejectVerifikasi'])
 
     // Foto Produk Lelang
     router.get('/foto-produk-lelang', [FotoProdukLelangsController, 'index'])

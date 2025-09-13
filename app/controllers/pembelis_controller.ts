@@ -2,21 +2,27 @@ import type { HttpContext } from '@adonisjs/core/http'
 import Pembeli from '#models/pembeli'
 import User from '#models/user'
 import PengajuanLelang from '#models/pengajuan_lelang'
+import Lelang from '#models/lelang'
 import vine from '@vinejs/vine'
 import db from '@adonisjs/lucid/services/db'
 import app from '@adonisjs/core/services/app'
+import logger from '@adonisjs/core/services/logger'
+import { DateTime } from 'luxon'
+import { unlink } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 
 export default class PembeliController {
   /**
-   * Menampilkan semua data pembeli.
+   * Ambil semua pembeli.
    */
   public async index({ response }: HttpContext) {
     try {
-      const pembelis = await Pembeli.query().preload('user')
+      const pembeli = await Pembeli.query().preload('user')
+
       return response.ok({
         success: true,
         message: 'Data pembeli berhasil diambil',
-        data: pembelis,
+        data: pembeli,
       })
     } catch (error) {
       return response.internalServerError({
@@ -33,20 +39,24 @@ export default class PembeliController {
   public async register({ request, response }: HttpContext) {
     const trx = await db.transaction()
     try {
+      // Validasi input
       const validator = vine.compile(
         vine.object({
           name: vine.string().maxLength(255),
           email: vine
             .string()
             .email()
+            .maxLength(255)
             .unique(async (db, value) => !(await db.from('users').where('email', value).first())),
           password: vine.string().minLength(8).confirmed(),
-          alamatPembeli: vine.string(),
-          teleponPembeli: vine.string().maxLength(20),
+          alamat_pembeli: vine.string(),
+          telepon_pembeli: vine.string().maxLength(20),
+          nomor_rekening: vine.string().maxLength(50).optional(),
         })
       )
       const payload = await request.validateUsing(validator)
 
+      // Buat user baru
       const user = await User.create(
         {
           name: payload.name,
@@ -57,16 +67,20 @@ export default class PembeliController {
         { client: trx }
       )
 
+      // Buat pembeli baru
       const pembeli = await Pembeli.create(
         {
           userId: user.id,
-          alamatPembeli: payload.alamatPembeli,
-          teleponPembeli: payload.teleponPembeli,
+          alamatPembeli: payload.alamat_pembeli,
+          teleponPembeli: payload.telepon_pembeli,
+          nomorRekening: payload.nomor_rekening,
         },
         { client: trx }
       )
 
       await trx.commit()
+
+      // Load relasi untuk response
       await pembeli.load('user')
 
       return response.created({
@@ -76,65 +90,88 @@ export default class PembeliController {
       })
     } catch (error) {
       await trx.rollback()
-      return response.badRequest({
+      return response.internalServerError({
         success: false,
         message: 'Gagal mendaftarkan pembeli',
-        error: error.messages || error.message,
-      })
-    }
-  }
-
-  /**
-   * Menampilkan detail satu pembeli.
-   */
-  public async show({ params, response }: HttpContext) {
-    try {
-      const pembeli = await Pembeli.findOrFail(params.id)
-      await pembeli.load('user')
-      return response.ok({
-        success: true,
-        message: 'Data pembeli berhasil diambil',
-        data: pembeli,
-      })
-    } catch (error) {
-      return response.notFound({
-        success: false,
-        message: 'Pembeli tidak ditemukan',
         error: error.message,
       })
     }
   }
 
   /**
-   * Memperbarui data pembeli.
+   * Ambil pembeli berdasarkan ID.
+   */
+  public async show({ params, response }: HttpContext) {
+    try {
+      const pembeli = await Pembeli.query()
+        .where('id', params.id)
+        .preload('user')
+        .first()
+
+      if (!pembeli) {
+        return response.notFound({
+          success: false,
+          message: 'Pembeli tidak ditemukan',
+        })
+      }
+
+      return response.ok({
+        success: true,
+        message: 'Data pembeli berhasil diambil',
+        data: pembeli,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal mengambil data pembeli',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Update pembeli.
    */
   public async update({ params, request, response }: HttpContext) {
     const trx = await db.transaction()
     try {
-      const pembeli = await Pembeli.findOrFail(params.id, { client: trx })
-      await pembeli.load('user')
+      const pembeli = await Pembeli.query({ client: trx })
+        .where('id', params.id)
+        .preload('user')
+        .first()
 
+      if (!pembeli) {
+        await trx.rollback()
+        return response.notFound({
+          success: false,
+          message: 'Pembeli tidak ditemukan',
+        })
+      }
+
+      // Validasi input
       const validator = vine.compile(
         vine.object({
           name: vine.string().maxLength(255),
-          alamatPembeli: vine.string(),
-          teleponPembeli: vine.string().maxLength(20),
+          alamat_pembeli: vine.string(),
+          telepon_pembeli: vine.string().maxLength(20),
+          nomor_rekening: vine.string().maxLength(50).optional(),
         })
       )
       const payload = await request.validateUsing(validator)
 
       // Update user
-      pembeli.user.name = payload.name
-      await pembeli.user.save()
+      await pembeli.user.merge({ name: payload.name }).save()
 
       // Update pembeli
-      pembeli.merge({
-        alamatPembeli: payload.alamatPembeli,
-        teleponPembeli: payload.teleponPembeli,
-      })
-      await pembeli.save()
+      await pembeli.merge({
+        alamatPembeli: payload.alamat_pembeli,
+        teleponPembeli: payload.telepon_pembeli,
+        nomorRekening: payload.nomor_rekening,
+      }).save()
 
       await trx.commit()
+
+      // Load relasi untuk response
       await pembeli.load('user')
 
       return response.ok({
@@ -144,25 +181,41 @@ export default class PembeliController {
       })
     } catch (error) {
       await trx.rollback()
-      return response.badRequest({
+      return response.internalServerError({
         success: false,
         message: 'Gagal mengupdate pembeli',
-        error: error.messages || error.message,
+        error: error.message,
       })
     }
   }
 
   /**
-   * Menghapus data pembeli dan user terkait.
+   * Hapus pembeli.
    */
   public async destroy({ params, response }: HttpContext) {
     const trx = await db.transaction()
     try {
-      const pembeli = await Pembeli.findOrFail(params.id, { client: trx })
-      const user = await User.findOrFail(pembeli.userId, { client: trx })
+      const pembeli = await Pembeli.query({ client: trx })
+        .where('id', params.id)
+        .preload('user')
+        .first()
 
+      if (!pembeli) {
+        await trx.rollback()
+        return response.notFound({
+          success: false,
+          message: 'Pembeli tidak ditemukan',
+        })
+      }
+
+      // Simpan ID user untuk dihapus
+      const userId = pembeli.userId
+
+      // Hapus pembeli
       await pembeli.delete()
-      await user.delete()
+
+      // Hapus user terkait
+      await User.query({ client: trx }).where('id', userId).delete()
 
       await trx.commit()
 
@@ -181,51 +234,87 @@ export default class PembeliController {
   }
 
   /**
-   * Mengambil riwayat bid seorang pembeli.
+   * Riwayat bid pembeli berdasarkan user_id pembeli.
    */
   public async riwayatBid({ params, response }: HttpContext) {
     try {
-      const pembeli = await Pembeli.findOrFail(params.id)
-      const riwayatBid = await PengajuanLelang.query()
-        .where('userId', pembeli.userId)
-        .preload('lelang', (lelangQuery) => {
-          lelangQuery
-            .preload('produk', (produkQuery) => produkQuery.preload('jenisProduk'))
-            .preload('penerimaanProduk', (penerimaanQuery) => penerimaanQuery.preload('petani'))
+      const pembeli = await Pembeli.find(params.id)
+
+      if (!pembeli) {
+        return response.notFound({
+          success: false,
+          message: 'Pembeli tidak ditemukan',
         })
-        .preload('pembayaranLelang')
-        .orderBy('created_at', 'desc')
+      }
+
+      // Ambil lelang yang sudah selesai
+      const lelangSelesai = await Lelang.query()
+        .where('status', 'ditutup')
+        .orWhere('tanggalSelesai', '<', DateTime.now().toSQL())
+        .select('id')
+
+      const lelangIds = lelangSelesai.map(lelang => lelang.id)
+
+      // Ambil bid terakhir dari setiap lelang yang sudah selesai
+      const lastBids = await PengajuanLelang.query()
+        .preload('lelang')
+        .where('userId', pembeli.userId)
+        .whereIn('lelangId', lelangIds)
+        .orderBy('createdAt', 'desc')
+
+      // Group by lelang_id dan ambil yang pertama (terbaru) dari setiap group
+      const groupedBids = new Map()
+      lastBids.forEach(bid => {
+        if (!groupedBids.has(bid.lelangId)) {
+          groupedBids.set(bid.lelangId, bid)
+        }
+      })
+
+      const lastBid = Array.from(groupedBids.values())
 
       return response.ok({
         success: true,
         message: 'Riwayat bid pembeli berhasil diambil',
-        data: riwayatBid,
+        data: lastBid,
       })
     } catch (error) {
       return response.internalServerError({
         success: false,
-        message: 'Gagal mengambil riwayat bid',
+        message: 'Gagal mengambil riwayat Bid',
         error: error.message,
       })
     }
   }
 
   /**
-   * Mengambil riwayat kemenangan seorang pembeli.
+   * Riwayat kemenangan pembeli berdasarkan user_id pembeli.
    */
   public async riwayatKemenangan({ params, response }: HttpContext) {
     try {
-      const pembeli = await Pembeli.findOrFail(params.id)
+      const pembeli = await Pembeli.find(params.id)
+
+      if (!pembeli) {
+        return response.notFound({
+          success: false,
+          message: 'Pembeli tidak ditemukan',
+        })
+      }
+
+      // Ambil pengajuan lelang yang dimenangkan berdasarkan user_id pembeli
       const riwayatKemenangan = await PengajuanLelang.query()
-        .where('userId', pembeli.userId)
-        .where('isPemenang', 'ya')
         .preload('lelang', (lelangQuery) => {
           lelangQuery
-            .preload('produk', (produkQuery) => produkQuery.preload('jenisProduk'))
-            .preload('penerimaanProduk', (penerimaanQuery) => penerimaanQuery.preload('petani'))
+            .preload('produk', (produkQuery) => {
+              produkQuery.preload('jenisProduk')
+            })
+            .preload('penerimaanProduk', (penerimaanQuery) => {
+              penerimaanQuery.preload('petani')
+            })
         })
         .preload('pembayaranLelang')
-        .orderBy('created_at', 'desc')
+        .where('userId', pembeli.userId)
+        .where('isPemenang', 'ya')
+        .orderBy('createdAt', 'desc')
 
       return response.ok({
         success: true,
@@ -235,65 +324,218 @@ export default class PembeliController {
     } catch (error) {
       return response.internalServerError({
         success: false,
-        message: 'Gagal mengambil riwayat kemenangan',
+        message: 'Gagal mengambil riwayat kemenangan pembeli',
         error: error.message,
       })
     }
   }
 
   /**
-   * Pembeli mengupload KTP untuk verifikasi.
+   * Untuk pembeli mengupload foto KTP.
    */
   public async uploadKtp({ request, auth, response }: HttpContext) {
     try {
       const validator = vine.compile(
         vine.object({
-          fotoKtp: vine.file({ size: '2mb', extnames: ['jpg', 'png', 'jpeg'] }),
+          foto_ktp: vine.file({
+            size: '2mb',
+            extnames: ['jpg', 'jpeg', 'png'],
+          }),
         })
       )
       const payload = await request.validateUsing(validator)
-      const user = auth.getUserOrFail()
-      await user.load('pembeli')
-      const pembeli = user.pembeli
 
-      if (pembeli.statusVerifikasi === 'approved') {
-        return response.badRequest({ message: 'Akun sudah terverifikasi.' })
+      const user = auth.user!
+      await user.load('pembeli')
+
+      // Hapus foto KTP lama jika ada
+      if (user.pembeli && user.pembeli.fotoKtp) {
+        const oldFilePath = app.makePath('public/uploads', user.pembeli.fotoKtp.replace('public/', ''))
+        if (existsSync(oldFilePath)) {
+          await unlink(oldFilePath)
+        }
       }
 
-      await payload.fotoKtp.move(app.makePath('public/uploads/ktp'))
-      const path = `uploads/ktp/${payload.fotoKtp.fileName}`
-
-      pembeli.merge({
-        fotoKtp: path,
-        statusVerifikasi: 'pending',
-        alasanPenolakan: null,
+      // Upload foto KTP baru
+      const fileName = `${user.id}_${Date.now()}.${payload.foto_ktp.extname}`
+      await payload.foto_ktp.move(app.makePath('public/uploads/ktp'), {
+        name: fileName,
       })
-      await pembeli.save()
+
+      const path = `ktp/${fileName}`
+
+      // Update atau create pembeli
+      if (user.pembeli) {
+        user.pembeli.fotoKtp = `public/uploads/${path}`
+        await user.pembeli.save()
+      } else {
+        await Pembeli.create({
+          userId: user.id,
+          fotoKtp: `public/uploads/${path}`,
+        })
+      }
 
       return response.ok({
-        message: 'Foto KTP berhasil diupload. Mohon tunggu proses verifikasi oleh admin.',
-        data: pembeli,
+        success: true,
+        message: 'Foto KTP berhasil diupload',
+        data: {
+          foto_ktp: path,
+          foto_ktp_url: `asset('storage/' . ${path})`, // URL lengkap
+        },
       })
     } catch (error) {
-      return response.badRequest({
-        message: 'Gagal upload KTP',
-        error: error.messages || error.message,
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal upload foto KTP',
+        error: error.message,
       })
     }
   }
 
   /**
-   * Pembeli mengecek status verifikasinya.
+   * Untuk pembeli mengecek status verifikasinya sendiri.
    */
   public async cekStatusVerifikasi({ auth, response }: HttpContext) {
-    const user = auth.getUserOrFail()
-    await user.load('pembeli')
-    const pembeli = user.pembeli
+    try {
+      const user = auth.user!
+      await user.load('pembeli')
 
-    return response.ok({
-      status_verifikasi: pembeli.statusVerifikasi,
-      alasan_penolakan: pembeli.alasanPenolakan,
-    })
+      if (!user.pembeli) {
+        return response.notFound({
+          success: false,
+          message: 'Data pembeli tidak ditemukan',
+        })
+      }
+
+      return response.ok({
+        status_verifikasi: user.pembeli.statusVerifikasi,
+        alasan_penolakan: user.pembeli.alasanPenolakan,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal mengecek status verifikasi',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Update profile pembeli.
+   */
+  public async updateProfile({ request, auth, response }: HttpContext) {
+    const trx = await db.transaction()
+    try {
+      const user = auth.user!
+      await user.load('pembeli')
+
+      if (!user.pembeli) {
+        await trx.rollback()
+        return response.notFound({
+          success: false,
+          message: 'Data pembeli tidak ditemukan',
+        })
+      }
+
+      // DEBUG: lihat persis apa yang sampai ke server
+      logger.info('Update Profile Request', {
+        user_id: user.id,
+        request_all: request.all(), // <-- penting
+      })
+
+      // Validasi
+      const validator = vine.compile(
+        vine.object({
+          name: vine.string().maxLength(255).optional(),
+          alamat_pembeli: vine.string().optional(),
+          telepon_pembeli: vine.string().maxLength(20).optional(),
+          foto_ktp: vine.file({
+            size: '2mb',
+            extnames: ['jpg', 'jpeg', 'png'],
+          }).optional(),
+        })
+      )
+      const payload = await request.validateUsing(validator)
+
+      // Update name (user)
+      if (payload.name) {
+        user.name = payload.name
+        await user.save()
+      }
+
+      const pembeli = user.pembeli
+
+      // Update pembeli - SET ATRIBUT SATU PER SATU (tanpa mass assignment)
+      if (payload.alamat_pembeli) {
+        pembeli.alamatPembeli = payload.alamat_pembeli
+      }
+      if (payload.telepon_pembeli) {
+        pembeli.teleponPembeli = payload.telepon_pembeli
+      }
+
+      // Foto KTP
+      if (payload.foto_ktp) {
+        if (pembeli.statusVerifikasi === 'approved') {
+          await trx.rollback()
+          return response.badRequest({
+            success: false,
+            message: 'Foto KTP tidak dapat diubah karena akun sudah terverifikasi',
+          })
+        }
+
+        // Hapus foto lama
+        if (pembeli.fotoKtp) {
+          const oldFilePath = app.makePath('public/uploads', pembeli.fotoKtp.replace('public/', ''))
+          if (existsSync(oldFilePath)) {
+            await unlink(oldFilePath)
+          }
+        }
+
+        // Upload foto baru
+        const fileName = `${user.id}_${Date.now()}.${payload.foto_ktp.extname}`
+        await payload.foto_ktp.move(app.makePath('public/uploads/ktp'), {
+          name: fileName,
+        })
+
+        const path = `ktp/${fileName}`
+        pembeli.fotoKtp = `public/uploads/${path}`
+
+        const hadPreviousKtp = pembeli.fotoKtp !== null
+        if (pembeli.statusVerifikasi === 'rejected' || !hadPreviousKtp) {
+          pembeli.statusVerifikasi = 'pending'
+          pembeli.alasanPenolakan = null
+        }
+      }
+
+      await pembeli.save()
+      await trx.commit()
+
+      await user.refresh()
+      await user.load('pembeli')
+
+      logger.info('Final updated data', {
+        user_name: user.name,
+        pembeli_address: user.pembeli.alamatPembeli,
+        pembeli_phone: user.pembeli.teleponPembeli,
+      })
+
+      return response.ok({
+        success: true,
+        message: 'Profile berhasil diupdate',
+        data: user,
+      })
+    } catch (error) {
+      await trx.rollback()
+      logger.error('Update Profile Error', {
+        message: error.message,
+        trace: error.stack,
+      })
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal mengupdate profile',
+        error: error.message,
+      })
+    }
   }
 
   // --- Method untuk Admin ---
@@ -302,36 +544,74 @@ export default class PembeliController {
    * Admin melihat daftar pengajuan verifikasi.
    */
   public async daftarVerifikasi({ response }: HttpContext) {
-    const pengajuan = await Pembeli.query().where('statusVerifikasi', 'pending').preload('user')
-    return response.ok(pengajuan)
+    try {
+      // Ambil pembeli yang statusnya masih 'pending'
+      const pengajuan = await Pembeli.query()
+        .where('statusVerifikasi', 'pending')
+        .preload('user')
+
+      return response.ok(pengajuan)
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal mengambil daftar verifikasi',
+        error: error.message,
+      })
+    }
   }
 
   /**
    * Admin menyetujui verifikasi.
    */
   public async approveVerifikasi({ params, response }: HttpContext) {
-    const pembeli = await Pembeli.findOrFail(params.id)
-    pembeli.merge({
-      statusVerifikasi: 'approved',
-      alasanPenolakan: null,
-    })
-    await pembeli.save()
-    return response.ok({ message: 'Verifikasi pembeli berhasil disetujui.' })
+    try {
+      const pembeli = await Pembeli.findOrFail(params.id)
+      pembeli.statusVerifikasi = 'approved'
+      pembeli.alasanPenolakan = null
+      await pembeli.save()
+
+      // Opsional: Kirim notifikasi ke pembeli
+
+      return response.ok({
+        message: 'Verifikasi pembeli berhasil disetujui.',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal menyetujui verifikasi',
+        error: error.message,
+      })
+    }
   }
 
   /**
    * Admin menolak verifikasi.
    */
   public async rejectVerifikasi({ params, request, response }: HttpContext) {
-    const validator = vine.compile(vine.object({ alasan: vine.string().maxLength(255) }))
-    const { alasan } = await request.validateUsing(validator)
+    try {
+      const validator = vine.compile(
+        vine.object({
+          alasan: vine.string().maxLength(255),
+        })
+      )
+      const payload = await request.validateUsing(validator)
 
-    const pembeli = await Pembeli.findOrFail(params.id)
-    pembeli.merge({
-      statusVerifikasi: 'rejected',
-      alasanPenolakan: alasan,
-    })
-    await pembeli.save()
-    return response.ok({ message: 'Verifikasi pembeli telah ditolak.' })
+      const pembeli = await Pembeli.findOrFail(params.id)
+      pembeli.statusVerifikasi = 'rejected'
+      pembeli.alasanPenolakan = payload.alasan
+      await pembeli.save()
+
+      // Opsional: Kirim notifikasi ke pembeli
+
+      return response.ok({
+        message: 'Verifikasi pembeli telah ditolak.',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        success: false,
+        message: 'Gagal menolak verifikasi',
+        error: error.message,
+      })
+    }
   }
 }
