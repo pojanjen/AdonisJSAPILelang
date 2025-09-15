@@ -4,7 +4,6 @@ import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
 import Produk from '#models/produk'
 import PengajuanLelang from '#models/pengajuan_lelang'
 import PenerimaanProduk from '#models/penerimaan_produk'
-import WaInfoLelang from '#models/wa_info_lelang'
 import FotoProdukLelang from '#models/foto_produk_lelang'
 import JobScheduler from '../jobs/job_scheduler.js'
 import logger from '@adonisjs/core/services/logger'
@@ -69,12 +68,6 @@ export default class Lelang extends BaseModel {
    */
   @hasMany(() => PenerimaanProduk)
   public penerimaanProduk!: HasMany<typeof PenerimaanProduk>
-
-  /**
-   * Relasi: Lelang has many WaInfoLelang
-   */
-  @hasMany(() => WaInfoLelang)
-  public waInfoLelang!: HasMany<typeof WaInfoLelang>
 
   @hasMany(() => FotoProdukLelang)
   declare fotoProdukLelang: HasMany<typeof FotoProdukLelang>

@@ -82,7 +82,15 @@ export default class FotoProdukLelangsController {
    */
   public async byLelang({ params, response }: HttpContext) {
     try {
-      const fotos = await FotoProdukLelang.query().where('lelangId', params.lelangId)
+      console.log(`Mencari foto untuk lelang ID: ${params.lelangId}`)
+
+      const fotos = await FotoProdukLelang.query()
+        .where('lelangId', params.lelangId)
+        .preload('lelang', (lelangQuery) => {
+          lelangQuery.preload('produk')
+        })
+
+      console.log(`Ditemukan ${fotos.length} foto untuk lelang ID: ${params.lelangId}`)
 
       return response.ok({
         success: true,
@@ -90,6 +98,7 @@ export default class FotoProdukLelangsController {
         data: fotos,
       })
     } catch (error) {
+      console.error(`Error saat mengambil foto untuk lelang ID ${params.lelangId}:`, error)
       return response.internalServerError({
         success: false,
         message: 'Gagal mengambil data foto produk lelang',

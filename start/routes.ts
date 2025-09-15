@@ -9,6 +9,9 @@
 
 import router from '@adonisjs/core/services/router'
 import { middleware } from './kernel.js'
+import app from '@adonisjs/core/services/app'
+import { resolve, join } from 'node:path'
+import { access } from 'node:fs/promises'
 
 // Import Controllers
 const AuthController = () => import('#controllers/auth_controller')
@@ -22,7 +25,6 @@ const PengajuanLelangsController = () => import('#controllers/pengajuan_lelangs_
 const PembayaranLelangsController = () => import('#controllers/pembayaran_lelangs_controller')
 const PembelisController = () => import('#controllers/pembelis_controller')
 const FotoProdukLelangsController = () => import('#controllers/foto_produk_lelangs_controller')
-const WaInfoLelangsController = () => import('#controllers/wa_info_lelangs_controller')
 
 /*
 |--------------------------------------------------------------------------
@@ -75,53 +77,27 @@ router.group(() => {
   router.get('/lelang/active', [LelangsController, 'active'])
   router.get('/lelang/:id', [LelangsController, 'show'])
 
-  // Foto Produk Lelang
-  router.get('/foto-produk-lelang/lelang/:lelangId', [FotoProdukLelangsController, 'byLelang'])
+// router.get('/uploads/:path', async ({ params, response }) => {
+//   const rel = String(params.path || 'lelang/beras_organik_1.jpg').trim() // contoh: "lelang/beras_organik_1.jpg"
+//   const base = app.publicPath('uploads')       // <project>/public/uploads
+//   const full = resolve(join(base, rel))
 
-  // Serve static images from storage with cache control
-  // Route for Flutter Web compatibility
-  router.get('/image/:path', async ({ params, response }) => {
-    const { path } = params
+//   // DEBUG: lihat path yang dihitung
+//   console.log({ base, rel, full })
 
-    try {
-      const { join } = await import('node:path')
-      const { fileURLToPath } = await import('node:url')
-      const { readFile, access } = await import('node:fs/promises')
+//   // Hindari path traversal
+//   if (!full.startsWith(resolve(base))) {
+//     return response.badRequest({ error: 'Invalid path' })
+//   }
 
-      const __dirname = fileURLToPath(new URL('.', import.meta.url))
-      const filePath = join(__dirname, '../../public/uploads', path)
-
-      try {
-        // Check if file exists
-        await access(filePath)
-
-        // Get file content
-        const file = await readFile(filePath)
-
-        // Set cache control headers for better performance
-        response.header('Cache-Control', 'public, max-age=31536000') // 1 year cache
-
-        // Set Content-Type based on file extension
-        const extension = path.split('.').pop()?.toLowerCase() || ''
-        const mimeTypes: Record<string, string> = {
-          'jpg': 'image/jpeg',
-          'jpeg': 'image/jpeg',
-          'png': 'image/png',
-          'gif': 'image/gif',
-          'webp': 'image/webp',
-          'pdf': 'application/pdf'
-        }
-
-        const contentType = mimeTypes[extension] || 'application/octet-stream'
-        return response.header('Content-Type', contentType).send(file)
-      } catch (error) {
-        return response.status(404).send({ error: 'File not found' })
-      }
-    } catch (error) {
-      console.error('File serving error:', error)
-      return response.status(500).send({ error: 'Failed to retrieve file' })
-    }
-  }).where('path', '.*')
+//   try {
+//     await access(full)
+//     response.header('Cache-Control', 'public, max-age=31536000, immutable')
+//     return response.download(full) // otomatis set Content-Type
+//   } catch {
+//     return response.notFound({ error: 'File not found', full })
+//   }
+// }).where('path', '.*')
 
   // ⚠️ Jangan expose daftar bid publik (lelang tertutup)
   // router.get('/pengajuan-lelang/lelang/:lelangId', [PengajuanLelangsController, 'byLelang']) // HAPUS / JANGAN DIPAKAI
@@ -232,14 +208,6 @@ router.group(() => {
     router.post('/foto-produk-lelang', [FotoProdukLelangsController, 'store'])
     router.put('/foto-produk-lelang/:id', [FotoProdukLelangsController, 'update'])
     router.delete('/foto-produk-lelang/:id', [FotoProdukLelangsController, 'destroy'])
-
-    // Info WA Lelang
-    router.get('/wa-info-lelang', [WaInfoLelangsController, 'index'])
-    router.post('/wa-info-lelang', [WaInfoLelangsController, 'store'])
-    router.get('/wa-info-lelang/:id', [WaInfoLelangsController, 'show'])
-    router.put('/wa-info-lelang/:id', [WaInfoLelangsController, 'update'])
-    router.delete('/wa-info-lelang/:id', [WaInfoLelangsController, 'destroy'])
-    router.get('/wa-info-lelang/pembeli/:pembeliId', [WaInfoLelangsController, 'byPembeli'])
 
     // Manajemen Verifikasi Pembeli (ADMIN)
     router.group(() => {
