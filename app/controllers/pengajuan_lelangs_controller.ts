@@ -303,7 +303,7 @@ export default class PengajuanLelangsController {
       const totalLelangResult = await PengajuanLelang.query()
         .where('userId', userId)
         .whereIn('lelangId', lelangSelesaiIds)
-        .distinctOn(['lelang_id'])
+        .distinct(['lelang_id'])
         .count('lelang_id as total')
         .first()
 
@@ -311,7 +311,7 @@ export default class PengajuanLelangsController {
         .where('userId', userId)
         .whereIn('lelangId', lelangSelesaiIds)
         .where('isPemenang', 'ya')
-        .distinctOn(['lelang_id'])
+        .distinct(['lelang_id'])
         .count('lelang_id as total')
         .first()
 

@@ -64,10 +64,10 @@ export default class LelangsController {
       const validator = vine.compile(
         vine.object({
           namaLelang: vine.string().maxLength(255),
-          produkId: vine.number().exists(async (db, value) => !!(await db.from('produks').where('id', value).first())),
+          produkId: vine.number().exists(async (db, value) => !!(await db.from('produk').where('id', value).first())),
           hargaAwal: vine.number().min(0),
-          tanggalMulai: vine.date().after('today'),
-          tanggalSelesai: vine.date().afterField('tanggalMulai'),
+          tanggalMulai: vine.date(),
+          tanggalSelesai: vine.date().afterField('tanggalMulai', { compare: 'minute' }),
           totalStock: vine.number().min(0).optional(),
         })
       )
@@ -134,11 +134,11 @@ export default class LelangsController {
         const validator = vine.compile(
             vine.object({
                 namaLelang: vine.string().maxLength(255),
-                produkId: vine.number().exists(async (db, value) => !!(await db.from('produks').where('id', value).first())),
+                produkId: vine.number().exists(async (db, value) => !!(await db.from('produk').where('id', value).first())),
                 hargaAwal: vine.number().min(0),
                 hargaAkhir: vine.number().min(0).optional(),
                 tanggalMulai: vine.date().transform((value) => DateTime.fromJSDate(value)),
-                tanggalSelesai: vine.date().afterField('tanggalMulai')
+                tanggalSelesai: vine.date().afterField('tanggalMulai', { compare: 'minute' })
                   .transform((value) => DateTime.fromJSDate(value)),
                 totalStock: vine.number().min(0).optional(),
                 status: vine.enum(['dibuka', 'ditutup', 'selesai']).optional(),

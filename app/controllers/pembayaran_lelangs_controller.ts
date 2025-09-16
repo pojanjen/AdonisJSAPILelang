@@ -68,7 +68,7 @@ export default class PembayaranLelangsController {
           pengajuanLelangId: vine
             .number()
             .exists(async (db, value) =>
-              !!(await db.from('pengajuan_lelangs').where('id', value).first())
+              !!(await db.from('pengajuan_lelang').where('id', value).first())
             ),
           jumlahPembayaran: vine.number().min(0),
 
