@@ -37,7 +37,7 @@ export default class FotoProdukLelangsController {
       const validator = vine.compile(
         vine.object({
           lelangId: vine.number().exists(async (db, value) => {
-            const lelang = await db.from('lelangs').where('id', value).first()
+            const lelang = await db.from('lelang').where('id', value).first()
             return !!lelang
           }),
           foto: vine.file({
@@ -118,7 +118,7 @@ export default class FotoProdukLelangsController {
       const validator = vine.compile(
         vine.object({
           lelangId: vine.number().exists(async (db, value) => {
-            const lelang = await db.from('lelangs').where('id', value).first()
+            const lelang = await db.from('lelang').where('id', value).first()
             return !!lelang
           }),
           foto: vine.file({

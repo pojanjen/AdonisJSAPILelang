@@ -38,9 +38,9 @@ export default class PenerimaanProdukController {
     try {
       const validator = vine.compile(
         vine.object({
-          produkId: vine.number().exists(async (db, v) => !!(await db.from('produks').where('id', v).first())),
-          petaniId: vine.number().exists(async (db, v) => !!(await db.from('petanis').where('id', v).first())),
-          lelangId: vine.number().exists(async (db, v) => !!(await db.from('lelangs').where('id', v).first())),
+          produkId: vine.number().exists(async (db, v) => !!(await db.from('produk').where('id', v).first())),
+          petaniId: vine.number().exists(async (db, v) => !!(await db.from('petani').where('id', v).first())),
+          lelangId: vine.number().exists(async (db, v) => !!(await db.from('lelang').where('id', v).first())),
           jumlah: vine.number().transform((val) => Math.floor(val)),
           tanggalPenerimaan: vine.date().transform((value) => DateTime.fromJSDate(value)),
           hargaPerUnit: vine.number().min(0),
@@ -54,7 +54,7 @@ export default class PenerimaanProdukController {
       // Update total stock di lelang
       const lelang = await Lelang.findOrFail(payload.lelangId, { client: trx })
       const [{ total }] = await db
-      .from('penerimaan_produks')
+      .from('penerimaan_produk')
       .where('lelang_id', payload.lelangId)
       .sum('jumlah as total')
       lelang.totalStock = Number(total ?? 0)
@@ -140,9 +140,9 @@ export default class PenerimaanProdukController {
 
       const validator = vine.compile(
         vine.object({
-          produkId: vine.number().exists(async (db, v) => !!(await db.from('produks').where('id', v).first())),
-          petaniId: vine.number().exists(async (db, v) => !!(await db.from('petanis').where('id', v).first())),
-          lelangId: vine.number().exists(async (db, v) => !!(await db.from('lelangs').where('id', v).first())),
+          produkId: vine.number().exists(async (db, v) => !!(await db.from('produk').where('id', v).first())),
+          petaniId: vine.number().exists(async (db, v) => !!(await db.from('petani').where('id', v).first())),
+          lelangId: vine.number().exists(async (db, v) => !!(await db.from('lelang').where('id', v).first())),
           jumlah: vine.number().transform((val) => Math.floor(val)),
           tanggalPenerimaan: vine.date().transform((value) => DateTime.fromJSDate(value)),
           hargaPerUnit: vine.number().min(0),
@@ -156,7 +156,7 @@ export default class PenerimaanProdukController {
       // Update total stock di lelang
       const lelang = await Lelang.findOrFail(payload.lelangId, { client: trx })
       const [{ total }] = await db
-        .from('penerimaan_produks')
+        .from('penerimaan_produk')
         .where('lelang_id', payload.lelangId)
         .sum('jumlah as total')
 
@@ -198,7 +198,7 @@ export default class PenerimaanProdukController {
       // Update total stock di lelang setelah penghapusan
       const lelang = await Lelang.findOrFail(lelangId, { client: trx })
       const [{ total }] = await db
-        .from('penerimaan_produks')
+        .from('penerimaan_produk')
         .where('lelang_id', lelangId)
         .sum('jumlah as total')
 
