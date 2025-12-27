@@ -185,6 +185,7 @@ router.group(() => {
     router.get('/penerimaan-produk/lelang/:lelangId', [PenerimaanProduksController, 'byLelang'])
 
     // Pengajuan Lelang (admin menentukan pemenang / cleanup)
+    router.get('/pengajuan-lelang', [PengajuanLelangsController, 'index']) // semua bid
     router.put('/pengajuan-lelang/:id/pemenang', [PengajuanLelangsController, 'setPemenang'])
     router.delete('/pengajuan-lelang/:id', [PengajuanLelangsController, 'destroy'])
 

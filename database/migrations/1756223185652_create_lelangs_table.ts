@@ -13,11 +13,11 @@ export default class extends BaseSchema {
       // Foreign key akan ditambahkan nanti setelah tabel produks dibuat
       table.integer('produk_id').unsigned().nullable()
 
-      table.float('harga_awal').notNullable()
-      table.float('harga_akhir').nullable()
+      table.integer('harga_awal').notNullable()
+      table.integer('harga_akhir').nullable()
       table.timestamp('tanggal_mulai').nullable()
       table.timestamp('tanggal_selesai').nullable()
-      table.float('total_stock').notNullable().defaultTo(0)
+      table.integer('total_stock').notNullable().defaultTo(0)
       table
         .enum('status', ['dibuka', 'ditutup', 'selesai'])
         .notNullable()

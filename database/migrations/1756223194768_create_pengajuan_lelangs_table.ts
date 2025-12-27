@@ -13,7 +13,7 @@ export default class extends BaseSchema {
       // Foreign key ke tabel 'users'
       table.integer('user_id').unsigned().references('id').inTable('users').onDelete('CASCADE')
 
-      table.float('harga_penawaran').notNullable()
+      table.integer('harga_penawaran').notNullable()
       table.enum('is_pemenang', ['ya', 'tidak']).notNullable().defaultTo('tidak')
 
       table.timestamp('created_at').nullable()
